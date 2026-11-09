@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import plistlib
 import sys
@@ -117,6 +118,16 @@ class FakeGitHub:
 
 
 class ReleaseValidationTests(unittest.TestCase):
+    def setUp(self):
+        self._actions_environment = patch.dict(
+            os.environ,
+            {'GITHUB_ACTIONS': 'false'},
+        )
+        self._actions_environment.start()
+
+    def tearDown(self):
+        self._actions_environment.stop()
+
     def test_safe_dispatch_inputs(self):
         release.validate_identity(TAG, COMMIT, 'request-123')
         for tag in ('v1', '../v1.0.0', 'v1.0.0;echo x', 'v1.0.0\n', 'main', '--help'):
@@ -261,9 +272,17 @@ class ReleaseValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / 'assets'
             create_payload(root)
-            with patch.dict('os.environ', {'GITHUB_RUN_ID': '12345', 'REQUEST_ID': 'request-123'}):
+            with patch.dict('os.environ', {
+                'GITHUB_ACTIONS': 'true',
+                'GITHUB_RUN_ID': '12345',
+                'REQUEST_ID': 'request-123',
+            }):
                 release.verify_payload(root, TAG, COMMIT)
-            with patch.dict('os.environ', {'GITHUB_RUN_ID': '999', 'REQUEST_ID': 'request-123'}):
+            with patch.dict('os.environ', {
+                'GITHUB_ACTIONS': 'true',
+                'GITHUB_RUN_ID': '999',
+                'REQUEST_ID': 'request-123',
+            }):
                 with self.assertRaisesRegex(ValueError, 'provenance'):
                     release.verify_payload(root, TAG, COMMIT)
 

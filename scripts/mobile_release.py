@@ -271,7 +271,11 @@ def verify_payload(directory, tag, commit):
     for key, expected in dict(schema_version=1, platform='ios', repository=REPOSITORY, tag=tag, source_commit=commit).items():
         if manifest.get(key) != expected:
             raise ValueError(f'Manifest identity mismatch: {key}')
-    if 'GITHUB_RUN_ID' in os.environ:
+    # Unit tests and local fixture validation may run inside a CI worker that
+    # exports a real GITHUB_RUN_ID. Bind provenance only for the publish/build
+    # workflow itself; tests opt out explicitly without weakening production
+    # validation, which still requires the actual Actions run ID.
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
         if manifest.get('workflow_run_id') != int(os.environ['GITHUB_RUN_ID']) or manifest.get('request_id') != os.environ.get('REQUEST_ID', ''):
             raise ValueError('Manifest workflow/request provenance mismatch')
     entries = manifest.get('assets', [])
