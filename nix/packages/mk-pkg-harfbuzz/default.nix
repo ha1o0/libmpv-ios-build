@@ -41,7 +41,12 @@ pkgs.stdenvNoCC.mkDerivation {
   enableParallelBuilding = true;
   inherit nativeBuildInputs;
   configurePhase = ''
-    meson setup build $src \
+    # New SDKs export sincosf but do not declare it for our iOS deployment
+    # target. Use HarfBuzz's equivalent portable sinf/cosf path.
+    cp -R $src source
+    chmod -R u+w source
+    sed -i "/\['sincosf'\],/d" source/meson.build
+    meson setup build source \
       --native-file ${nativeFile} \
       --cross-file ${crossFile} \
       --prefix=$out \

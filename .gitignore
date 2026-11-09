@@ -1,5 +1,7 @@
 /.direnv
 /result
+/result-*
+/build/
 
 /release-assets/
 __pycache__/

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Load the actual bundled simulator frameworks and initialize libmpv, no stubs."""
+import argparse
 import json
 import os
 from pathlib import Path
@@ -15,11 +16,13 @@ def run(args, **kwargs):
     return subprocess.check_output(args, text=True, stderr=subprocess.STDOUT, **kwargs).strip()
 
 
-def simulator_selection():
+def simulator_selection(runtime_id=None):
     runtimes = json.loads(run(['xcrun', 'simctl', 'list', 'runtimes', '--json']))['runtimes']
-    candidates = [r for r in runtimes if r.get('isAvailable') and r['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-18-')]
+    candidates = [r for r in runtimes if r.get('isAvailable') and
+                  (r['identifier'] == runtime_id if runtime_id else
+                   r['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-18-'))]
     if not candidates:
-        raise RuntimeError('An available iOS 18 simulator runtime is required; no runtime is downloaded automatically')
+        raise RuntimeError(f'An available {runtime_id or "iOS 18"} simulator runtime is required; no runtime is downloaded automatically')
     runtime = min(candidates, key=lambda r: tuple(map(int, r['version'].split('.'))))
     devices = json.loads(run(['xcrun', 'simctl', 'list', 'devicetypes', '--json']))['devicetypes']
     types = [d for d in devices if d.get('productFamily') == 'iPhone' and 'iPhone-16' in d['identifier']]
@@ -44,6 +47,9 @@ int main(void) {
   void *handle = create();
   if (!handle) return 3;
   if (option(handle, "config", "no") < 0 || option(handle, "vo", "null") < 0 || option(handle, "ao", "null") < 0) return 4;
+  // Confirm the zcopy secondary-subtitle API, not just a loadable upstream mpv.
+  if (option(handle, "secondary-sub-style", "independent") < 0 ||
+      option(handle, "secondary-sub-scale", "1.25") < 0) return 6;
   int result = initialize(handle);
   destroy(handle);
   if (result < 0) { fprintf(stderr, "mpv_initialize: %d\n", result); return 5; }
@@ -55,11 +61,18 @@ int main(void) {
 
 
 def main():
-    runtime, device_type = simulator_selection()
-    if sys.argv[1:] == ['--preflight']:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('root', nargs='?', type=Path)
+    parser.add_argument('--preflight', action='store_true')
+    parser.add_argument('--runtime', help='Exact installed runtime ID for local validation; CI defaults to iOS 18')
+    args = parser.parse_args()
+    runtime, device_type = simulator_selection(args.runtime)
+    if args.preflight:
         print(f'Simulator smoke runtime: {runtime}; device type: {device_type}')
         return
-    root = Path(sys.argv[1]).resolve()
+    if args.root is None:
+        parser.error('root is required unless --preflight is used')
+    root = args.root.resolve()
     with tempfile.TemporaryDirectory(prefix='mpv-ios-smoke-') as temp:
         directory = Path(temp)
         frameworks = directory / 'Frameworks'

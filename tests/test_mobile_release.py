@@ -79,7 +79,7 @@ def create_payload(directory):
             item['kind'] = 'ios-archive'
         assets.append(item)
     manifest = dict(schema_version=1, platform='ios', repository=release.REPOSITORY,
-                    tag=TAG, source_commit=COMMIT, assets=assets, workflow_run_id=12345, request_id='request-123')
+                    tag=TAG, source_commit=COMMIT, native_sources=release.native_sources(), assets=assets, workflow_run_id=12345, request_id='request-123')
     (directory / release.MANIFEST).write_text(json.dumps(manifest))
     return manifest
 
@@ -221,6 +221,15 @@ class ReleaseValidationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     release.unpack_archive(archive, root / 'output', TAG)
 
+    def test_rejects_native_source_provenance_mismatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'payload'
+            manifest = create_payload(root)
+            manifest['native_sources']['mpv']['commit'] = 'b' * 40
+            (root / release.MANIFEST).write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, 'native_sources'):
+                release.verify_payload(root, TAG, COMMIT)
+
     def test_manifest_and_payload_hashes_are_bound_to_tag_and_commit(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / 'assets'
@@ -311,7 +320,7 @@ class ReleaseValidationTests(unittest.TestCase):
             sdk = root / 'sdk'
             sdk.mkdir()
             def command(args, **kwargs):
-                return 'Xcode 16.1\nBuild version 16B40' if args[-1] == '-version' else str(sdk)
+                return 'Xcode 16.4\nBuild version 16F6' if args[-1] == '-version' else str(sdk)
             self.assertEqual(release.resolve_xcode(root, command), app.resolve())
             with self.assertRaisesRegex(ValueError, 'refusing to download'):
                 release.resolve_xcode(root, lambda *_args, **_kwargs: 'Xcode 27.2\nBuild version 27B52')

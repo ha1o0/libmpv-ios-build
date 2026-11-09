@@ -1,6 +1,8 @@
 name: iOS libmpv release
-run-name: iOS libmpv ${{ inputs.release_tag }} · ${{ inputs.request_id }}
+run-name: iOS libmpv ${{ inputs.release_tag || format('v0.0.0-ci.{0}', github.run_id) }} · ${{ inputs.request_id }}
 on:
+  push:
+    branches: [codex/mobile-native-validation]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -17,17 +19,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: ios-libmpv-${{ inputs.release_tag }}
+  group: ios-libmpv-${{ inputs.release_tag || format('v0.0.0-ci.{0}', github.run_id) }}
   cancel-in-progress: false
 
 env:
-  RELEASE_TAG: ${{ inputs.release_tag }}
+  RELEASE_TAG: ${{ inputs.release_tag || format('v0.0.0-ci.{0}', github.run_id) }}
   REQUEST_ID: ${{ inputs.request_id }}
   SOURCE_COMMIT: ${{ github.sha }}
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v6
@@ -41,7 +43,7 @@ jobs:
           python3 scripts/mobile_release.py preflight
           test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
           python3 -m unittest discover -s tests -v
-      - name: Resolve installed Xcode 16.1 and SDKs
+      - name: Resolve installed Xcode 16.4 and SDKs
         id: xcode
         run: python3 scripts/mobile_release.py resolve-xcode
       - name: Check an installed simulator before the native build
@@ -78,6 +80,7 @@ jobs:
           retention-days: 14
 
   publish:
+    if: github.event_name == 'workflow_dispatch'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15

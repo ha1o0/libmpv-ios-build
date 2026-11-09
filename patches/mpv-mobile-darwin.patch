@@ -1,0 +1,46 @@
+--- a/meson.build
++++ b/meson.build
+@@ -27,7 +27,7 @@
+ libswresample = dependency('libswresample', version: '>= 4.12.100')
+ libswscale = dependency('libswscale', version: '>= 7.5.100')
+
+-libplacebo = dependency('libplacebo', version: '>=7.360.1',
++libplacebo = dependency('libplacebo', static: true, version: '>=7.360.1',
+                 default_options: ['default_library=static', 'demos=false'])
+
+ libass = dependency('libass', version: '>= 0.12.2')
+@@ -839,6 +839,8 @@
+ }
+ features += {'audiounit': audiounit['deps'].found() and audiounit['symbol']}
+ if features['audiounit']
++    add_languages('objc', native: false)
++    dependencies += dependency('appleframeworks', modules: ['AVFoundation'])
+     dependencies += audiounit['deps']
+     sources += files('audio/out/ao_audiounit.m')
+ endif
+@@ -1463,6 +1465,8 @@
+     get_option('ios-gl').require(darwin))
+ features += {'ios-gl': ios_gl}
+ if features['ios-gl']
++    add_languages('objc', native: false)
++    dependencies += dependency('appleframeworks', modules: ['CoreVideo', 'OpenGLES'])
+     sources += files('video/out/hwdec/hwdec_ios_gl.m')
+ endif
+
+@@ -1561,14 +1565,14 @@
+
+ # macOS features
+ macos_sdk_version_py = ''
+-if darwin
++if features['cocoa']
+     macos_sdk_version_py = find_program(join_paths(source_root, 'TOOLS', 'macos-sdk-version.py'),
+                                                    required: true)
+ endif
+
+ macos_sdk_path = ''
+ macos_sdk_version = '0.0'
+-if darwin and macos_sdk_version_py.found()
++if features['cocoa'] and macos_sdk_version_py.found()
+     macos_sdk_info = run_command(macos_sdk_version_py, check: true).stdout().split(',')
+     macos_sdk_path = macos_sdk_info[0]
+     macos_sdk_version = macos_sdk_info[1]

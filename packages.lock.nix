@@ -1,14 +1,11 @@
+let mobile = builtins.fromJSON (builtins.readFile ./mobile-sources.json); in
 {
   dav1d = {
     version = "1.2.1";
     url = "https://code.videolan.org/videolan/dav1d/-/archive/1.2.1/dav1d-1.2.1.tar.bz2";
     sha256 = "a4003623cdc0109dec3aac8435520aa3fb12c4d69454fa227f2658cdb6dab5fa";
   };
-  ffmpeg = {
-    version = "6.0";
-    url = "https://ffmpeg.org/releases/ffmpeg-6.0.tar.xz";
-    sha256 = "57be87c22d9b49c112b6d24bc67d42508660e6b718b3db89c44e47e289137082";
-  };
+  ffmpeg = mobile.ffmpeg;
   fftools-ffi = {
     version = "9b0d4da0";
     url = "https://github.com/moffatman/fftools-ffi/archive/9b0d4da026d9c830702ec043c1f1f98d407025af.tar.gz";
@@ -74,14 +71,13 @@
     url = "https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v3.4.1.tar.gz";
     sha256 = "a420fcf7103e54e775c383e3751729b8fb2dcd087f6165befd13f28315f754f5";
   };
-  mpv = {
-    version = "0.36.0";
-    url = "https://github.com/mpv-player/mpv/archive/refs/tags/v0.36.0.tar.gz";
-    sha256 = "29abc44f8ebee013bb2f9fe14d80b30db19b534c679056e4851ceadf5a5e8bf6";
-  };
+  mpv = mobile.mpv;
   uchardet = {
     version = "0.0.8";
     url = "https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz";
     sha256 = "e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0";
   };
+  libplacebo = mobile.libplacebo;
+  fast_float = mobile.fast_float;
+  vulkan_headers = mobile.vulkan_headers;
 }

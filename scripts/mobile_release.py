@@ -27,6 +27,11 @@ TAG = re.compile(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)
 SHA = re.compile(r'[0-9a-f]{40}\Z')
 
 
+def native_sources():
+    """Bind release provenance to the source archives consumed by this checkout."""
+    return json.loads((Path(__file__).resolve().parents[1] / 'mobile-sources.json').read_text())
+
+
 def validate_identity(tag, commit, request_id=''):
     if not TAG.fullmatch(tag) or len(tag) > 100:
         raise ValueError('release_tag must be vMAJOR.MINOR.PATCH with an optional safe prerelease suffix')
@@ -259,7 +264,7 @@ def prepare(source, output, tag, commit):
             asset.update(kind='ios-framework-zip', framework=name[len(prefix(tag)) + 1:-4])
         assets.append(asset)
     manifest = dict(schema_version=1, platform='ios', repository=REPOSITORY,
-                    tag=tag, source_commit=commit, assets=assets,
+                    tag=tag, source_commit=commit, native_sources=native_sources(), assets=assets,
                     workflow_run_id=int(os.environ.get('GITHUB_RUN_ID', '0')),
                     request_id=os.environ.get('REQUEST_ID', ''))
     (output / MANIFEST).write_text(json.dumps(manifest, indent=2) + '\n')
@@ -268,7 +273,7 @@ def prepare(source, output, tag, commit):
 def verify_payload(directory, tag, commit):
     validate_identity(tag, commit)
     manifest = json.loads((directory / MANIFEST).read_text())
-    for key, expected in dict(schema_version=1, platform='ios', repository=REPOSITORY, tag=tag, source_commit=commit).items():
+    for key, expected in dict(schema_version=1, platform='ios', repository=REPOSITORY, tag=tag, source_commit=commit, native_sources=native_sources()).items():
         if manifest.get(key) != expected:
             raise ValueError(f'Manifest identity mismatch: {key}')
     # Unit tests and local fixture validation may run inside a CI worker that
@@ -371,7 +376,7 @@ def resolve_xcode(applications=Path('/Applications'), command=run):
         if not tool.is_file():
             continue
         version = command([str(tool), '-version'])
-        if re.search(r'^Xcode 16\.1\s*$', version, re.M) and 'Build version 16B40' in version:
+        if re.search(r'^Xcode 16\.4\s*$', version, re.M) and 'Build version 16F6' in version:
             environment = {**os.environ, 'DEVELOPER_DIR': str(candidate / 'Contents/Developer')}
             for sdk in ('iphoneos', 'iphonesimulator'):
                 sdk_path = command(['xcrun', '--sdk', sdk, '--show-sdk-path'], env=environment)
@@ -380,7 +385,7 @@ def resolve_xcode(applications=Path('/Applications'), command=run):
             if '\n' in str(candidate):
                 raise ValueError('Invalid Xcode path')
             return candidate
-    raise ValueError('Xcode 16.1 (16B40) is required and was not found; refusing to download Xcode or change SDK versions')
+    raise ValueError('Xcode 16.4 (16F6) is required and was not found; refusing to download Xcode or change SDK versions')
 
 
 def main():
