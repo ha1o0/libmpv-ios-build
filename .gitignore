@@ -1,2 +1,6 @@
 /.direnv
 /result
+
+/release-assets/
+__pycache__/
+*.pyc

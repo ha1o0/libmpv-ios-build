@@ -1,88 +1,19 @@
-name: ci
-
+name: validate release tooling
 on:
   push:
-    branches:
-      - main
-    tags:
-      - "*"
+    branches: [main]
   pull_request:
-    branches:
-      - "*"
-
+permissions:
+  contents: read
 jobs:
-  ci:
-    name: ci
-    # https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md
-    runs-on: macos-15
-    permissions:
-      contents: write
+  validate:
+    runs-on: ubuntu-latest
     steps:
-      - name: Platform info
-        run: |
-          printf "%-23s %s\n" "ProductName:"    "$(/usr/bin/sw_vers -productName)"
-          printf "%-23s %s\n" "ProductVersion:" "$(/usr/bin/sw_vers -productVersion)"
-          printf "%-23s %s\n" "BuildVersion:"   "$(/usr/bin/sw_vers -buildVersion)"
-          printf "%-23s %s\n" "Arch:"           "$(uname -m)"
-
       - uses: actions/checkout@v6
-
-      - uses: DeterminateSystems/nix-installer-action@v22
         with:
-          extra-conf: |
-            sandbox = true
-            sandbox-fallback = false
-
-      - name: Nix version
-        run: nix --version
-
-      - name: Show Nix config
-        run: nix config show
-
-      - uses: DeterminateSystems/magic-nix-cache-action@v13
+          persist-credentials: false
+      - uses: actions/setup-python@v6
         with:
-          use-flakehub: false
-
-      # See ${workspace}/nix/overlays/xcode.nix
-      - name: Xcode path
-        id: xcode_path
-        run: |
-          XCODE_PATH=$(realpath /Applications/Xcode_16.1.0.app)
-
-          ${XCODE_PATH}/Contents/Developer/usr/bin/xcodebuild -version
-
-          echo "xcode_path=${XCODE_PATH}" >> $GITHUB_OUTPUT
-
-      - name: Build version
-        id: version
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/}"
-          fi
-
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-
-      # See ${workspace}/Makefile
-      - name: Build
-        env:
-          XCODE_PATH: ${{ steps.xcode_path.outputs.xcode_path }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          nix develop -c make XCODE_PATH=${XCODE_PATH} VERSION=${VERSION}
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          if-no-files-found: error
-          path: |
-            result/*.tar.gz
-            result/*.zip
-
-      - name: Release
-        uses: softprops/action-gh-release@v3
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          fail_on_unmatched_files: true
-          files: |
-            result/*.tar.gz
-            result/*.zip
+          python-version: '3.12'
+      - run: python3 -m unittest discover -s tests -v
+      - run: python3 -m py_compile scripts/mobile_release.py scripts/ios_load_smoke.py

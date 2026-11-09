@@ -7,6 +7,79 @@ with commercial use for playback, and GPL use for encoding.
 Heavily inspired by [Homebrew](https://github.com/Homebrew/brew) and
 [IINA](https://github.com/iina/iina).
 
+## iOS-only release automation
+
+The fork's `.github/workflows/mobile-release.yml` is manual-only. Dispatch it on
+the exact commit to build, with a **new** `release_tag` such as
+`v2.25.0-ios.1`; optional `request_id` (letters/digits/hyphens, at most 64) lets a
+caller identify the run. Pushes and pull requests run standard-library tests
+only. They do not compile Darwin libraries or publish releases.
+
+The workflow builds the existing Nix target
+`mk-out-archive-xcframeworks-ios-universal-video-full`. It does **not** build the
+`mk-out-all` default. Nix evaluation confirms the payload consists of device
+arm64 and universal simulator arm64/x86_64 frameworks. No macOS media libraries
+are built. A shared macOS packaging shell may appear as a tiny shebang-patching
+derivation; that shell is not executed for this target.
+
+`macos-15` currently provides Xcode 16.1/16B40 according to the official
+[runner image inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md).
+The workflow scans installed `Xcode*.app` bundles and checks the executable's
+version/build plus device and simulator SDK availability; it never guesses an
+application path, downloads Xcode, or silently switches the pinned SDK. An
+installed iOS 18 runtime and iPhone 16 simulator device type are required for
+the load check. Missing prerequisites stop before the Nix compilation.
+
+Each successful run prepares 19 native assets:
+
+- `libmpv-xcframeworks_<tag>_ios-universal-video-full.tar.gz`
+- `libmpv-xcframeworks_<tag>_ios-universal-video-full_<Framework>.zip`
+  for each of the 18 frameworks listed in `scripts/mobile_release.py`.
+
+The additional `mobile-libmpv-manifest.json` records `schema_version: 1`,
+`platform: "ios"`, repository, tag, the full dispatched source commit,
+`workflow_run_id` (JSON integer), `request_id`, and the exact name, SHA-256,
+size, kind and framework name of each asset. Consumers must verify these
+fields and the associated successful workflow run before updating bindings.
+The ZIP contents must equal the matching framework in the checked archive.
+
+Before upload, checks inspect every slice's `Info.plist`, actual Mach-O
+architectures and platform load commands, framework install names, dependency
+closure, required mpv API exports, and undefined symbols. Flat-namespace
+imports and unresolved `_pl_*` libplacebo symbols fail the build. The current
+locked mpv 0.36.0 recipe deliberately builds without libplacebo; this release
+pipeline does not stub missing symbols or change media dependency versions.
+A small, freshly compiled iOS Simulator executable then `dlopen`s the **real**
+Mpv framework with `RTLD_NOW`, resolves its public API, creates a player,
+initializes `vo=null`/`ao=null`, and destroys it. Only the workflow's temporary
+simulator is booted and removed. Static slice checks cover both simulator
+architectures; execution covers the runner's native architecture. Actual
+video rendering, hardware decoding, audio, subtitles and physical iOS devices
+still need application integration tests.
+
+Only the publishing job has `contents: write`. It rechecks all manifest hashes,
+atomically creates a new tag at the dispatched SHA, creates a draft prerelease,
+uploads without overwrite, verifies remote asset names/sizes/SHA-256 digests
+and the exact asset set, rechecks the tag, then publishes the prerelease with
+`make_latest: false`. Existing tags/releases are rejected before the expensive
+build and again before publication. A race cannot force-update a tag. If an
+upload fails, the new tag and draft remain for inspection and are never
+silently replaced; use a new release tag after resolving the failure.
+
+Local tooling checks (no native build):
+
+```sh
+python3 -m unittest discover -s tests -v
+python3 -m py_compile scripts/mobile_release.py scripts/ios_load_smoke.py
+nix eval --raw .#packages.aarch64-darwin.mk-out-archive-xcframeworks-ios-universal-video-full.name
+nix eval --raw .#packages.x86_64-darwin.mk-out-archive-xcframeworks-ios-universal-video-full.name
+```
+
+The initial implementation was checked with these tests, workflow YAML parsing
+and Nix target/dependency evaluation. No complete native compilation or paid
+workflow dispatch was run locally. Fixture tests validate failure handling;
+they are not evidence that the actual native artifact passes the CI gates.
+
 ## Setup
 
 - Nix: [nixos.org/download/#nix-install-macos](https://nixos.org/download/#nix-install-macos)

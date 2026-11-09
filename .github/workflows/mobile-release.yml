@@ -1,0 +1,98 @@
+name: iOS libmpv release
+run-name: iOS libmpv ${{ inputs.release_tag }} · ${{ inputs.request_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'New immutable tag, e.g. v2.25.0-ios.1'
+        required: true
+        type: string
+      request_id:
+        description: 'Optional caller correlation ID (letters, digits, hyphens)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-libmpv-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag }}
+  REQUEST_ID: ${{ inputs.request_id }}
+  SOURCE_COMMIT: ${{ github.sha }}
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate request and refuse reused tags before building
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/mobile_release.py preflight
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          python3 -m unittest discover -s tests -v
+      - name: Resolve installed Xcode 16.1 and SDKs
+        id: xcode
+        run: python3 scripts/mobile_release.py resolve-xcode
+      - name: Check an installed simulator before the native build
+        env:
+          DEVELOPER_DIR: ${{ steps.xcode.outputs.xcode_path }}/Contents/Developer
+        run: python3 scripts/ios_load_smoke.py --preflight
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          extra-conf: |
+            sandbox = true
+            sandbox-fallback = false
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+        with:
+          use-flakehub: false
+      - name: Build only iOS universal video/full archives
+        env:
+          XCODE_PATH: ${{ steps.xcode.outputs.xcode_path }}
+        run: |
+          python3 scripts/mobile_release.py validate-inputs
+          printf '%s\n' "$XCODE_PATH" > .nix/config/xcode.path
+          printf '%s\n' "$RELEASE_TAG" > .nix/config/version.txt
+          nix build -v -L --option sandbox true --option sandbox-fallback false \
+            --option extra-sandbox-paths "$XCODE_PATH" \
+            .#mk-out-archive-xcframeworks-ios-universal-video-full
+      - name: Verify slices, dependencies, symbols, runtime loading, ZIPs and checksums
+        env:
+          DEVELOPER_DIR: ${{ steps.xcode.outputs.xcode_path }}/Contents/Developer
+        run: python3 scripts/mobile_release.py prepare
+      - uses: actions/upload-artifact@v7
+        with:
+          name: verified-ios-libmpv-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: verified-ios-libmpv-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release-assets
+      - name: Recheck payload and create a new prerelease without overwriting
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/mobile_release.py publish
